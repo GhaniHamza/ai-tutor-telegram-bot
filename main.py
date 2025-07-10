@@ -1,4 +1,7 @@
 import logging
+import json # Make sure this is at the top
+import base64 # And this one too
+import os # And this one
 from functools import wraps
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -13,14 +16,9 @@ from telegram.ext import (
 import firebase_admin
 from firebase_admin import credentials, firestore
 import google.generativeai as genai
-import base64
-import json
-
-import os # Make sure to add this import at the top of your file
 
 # --- SETUP ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
-FIREBASE_CREDENTIALS_JSON_STR = os.environ.get("FIREBASE_CREDENTIALS_JSON_STR")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 AI_MODEL_NAME = "models/gemini-1.5-flash-latest"
 # --- END SETUP ---
@@ -33,32 +31,37 @@ MAIN_MENU_MARKUP = ReplyKeyboardMarkup(MAIN_MENU_KEYBOARD, resize_keyboard=True)
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 db, ai_model = None, None
+
+# --- FIREBASE INITIALIZATION ---
 try:
-    try:
-    # Get the Base64 encoded string from the environment
+    # These lines MUST be indented
     base64_creds = os.environ.get("FIREBASE_CREDENTIALS_BASE64")
-    
-    # Decode the Base64 string into a JSON string
-    json_creds_str = base64.b64decode(base64_creds).decode('utf-8')
-    
-    # Convert the JSON string into a Python dictionary
-    firebase_credentials_dict = json.loads(json_creds_str)
-    
-    # Initialize Firebase with the dictionary
-    cred = credentials.Certificate(firebase_credentials_dict)
-    
-    if not firebase_admin._apps:
-        firebase_admin.initialize_app(cred)
-    db = firestore.client()
-    logger.info("Firebase connected successfully via Base64 credentials!") # New log message
+    if base64_creds:
+        json_creds_str = base64.b64decode(base64_creds).decode('utf-8')
+        firebase_credentials_dict = json.loads(json_creds_str)
+        cred = credentials.Certificate(firebase_credentials_dict)
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        logger.info("Firebase connected successfully via Base64 credentials!")
+    else:
+        logger.error("FATAL: FIREBASE_CREDENTIALS_BASE64 environment variable not found.")
 except Exception as e:
-    # This will now give a more specific error if it fails
+    # This line MUST be indented
     logger.error(f"FATAL: DB connection failed from Base64 credentials: {e}")
-except Exception as e: logger.error(f"FATAL: DB connection failed: {e}")
+
+# --- AI INITIALIZATION ---
 try:
-    genai.configure(api_key=GEMINI_API_KEY)
-    ai_model = genai.GenerativeModel(AI_MODEL_NAME)
-except Exception as e: logger.error(f"FATAL: AI config failed: {e}")
+    # These lines MUST be indented
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        ai_model = genai.GenerativeModel(AI_MODEL_NAME)
+        logger.info(f"Google AI configured successfully with model: {AI_MODEL_NAME}")
+    else:
+        logger.error("FATAL: GEMINI_API_KEY environment variable not found.")
+except Exception as e:
+    # This line MUST be indented
+    logger.error(f"FATAL: AI config failed: {e}")
 
 # --- GLOBAL DEFS ---
 AVAILABLE_SUBJECTS = ["ICT", "English", "Math", "Physics"]
