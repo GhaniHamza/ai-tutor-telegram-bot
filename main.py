@@ -80,46 +80,21 @@ def login_required(func):
             return ConversationHandler.END
     return wrapper
 
-# --- AI FUNCTIONS ---
+# --- NEW IGCSE-FOCUSED QUIZ FUNCTION ---
 async def generate_quiz_from_ai(subject_name: str):
-    """Creates a prompt and generates a quiz using the AI."""
-    if not ai_model: return "Sorry, the AI service is currently unavailable."
-    prompt = f"""
-    You are an educational assistant. Your task is to create a quiz.
+    """Creates a prompt and generates a quiz specifically for the IGCSE syllabus."""
+    if not ai_model:
+        return "Sorry, the AI service is currently unavailable."
     
+    prompt = f"""
+    You are an expert IGCSE exam creator. Your single task is to create a quiz.
+
     Instructions:
     1. Create a 5-question multiple-choice quiz about the subject: "{subject_name}".
-    2. The questions should be suitable for a high-school level student (e.g., IGCSE or A-Level).
+    2. **CRITICAL**: The questions, terminology, and concepts must strictly adhere to the IGCSE syllabus. Do not include content from A-Levels, AP, or other curricula.
     3. For each question, provide 4 options (A, B, C, D).
-    4. **IMPORTANT**: Do not reveal the answer immediately after each question.
-    5. After all 5 questions, create a separate section titled "🔑 Answer Key".
-    6. In the answer key, list the correct answer and a brief, one-sentence explanation for each question.
-    
-    Example format:
-    
-    **Quiz on {subject_name}**
-    
-    1. [Question 1 text]?
-       A) Option A
-       B) Option B
-       C) Option C
-       D) Option D
-    
-    2. [Question 2 text]?
-       A) Option A
-       B) Option B
-       C) Option C
-       D) Option D
-    
-    ... (and so on for 5 questions)
-    
-    ---
-    
-    **🔑 Answer Key**
-    
-    1. **B** - Brief explanation for why B is the correct answer.
-    2. **A** - Brief explanation for why A is the correct answer.
-    ...
+    4. After all 5 questions, create a separate section titled "🔑 Answer Key".
+    5. In the answer key, list the correct answer and a brief, one-sentence explanation that is relevant to the IGCSE context.
     """
     try:
         response = await ai_model.generate_content_async(prompt)
@@ -239,40 +214,46 @@ async def start_tutor_session(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("Which subject for tutoring?", reply_markup=InlineKeyboardMarkup(keyboard))
     return T_SELECT_SUBJECT
 
+# --- NEW IGCSE-FOCUSED TUTOR INITIATION ---
 async def start_ai_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # ... Same as before ...
-    initial_question, subject = update.message.text, context.user_data.get('tutor_subject', 'subject')
-    await update.message.reply_text("Connecting to AI Tutor...")
+    """Initializes the AI chat session with a strict IGCSE Tutor persona."""
+    initial_question = update.message.text
+    subject = context.user_data.get('tutor_subject', 'this subject')
+    await update.message.reply_text("Initializing IGCSE Tutor... Please wait.")
+
     try:
-        chat_session = ai_model.start_chat(history=[{'role': 'user', 'parts': [f"You are an expert tutor for {subject}."]}, {'role': 'model', 'parts': ["Understood."]}])
+        # This history block creates the AI's persona and rules.
+        chat_history = [
+            {'role': 'user', 'parts': [f"""
+            Your identity: You are a highly specialized AI Tutor for the IGCSE syllabus. 
+            Your ONLY focus is the IGCSE curriculum for the subject: {subject}.
+            
+            Your rules:
+            1. All your explanations, examples, and answers MUST be strictly relevant to the IGCSE syllabus.
+            2. If a student asks a question outside this scope, gently guide them back by saying something like, "That's an interesting question, but for the IGCSE syllabus, we should focus on..."
+            3. Use terminology and examples that are common in IGCSE textbooks and exams.
+            4. Be patient, encouraging, and clear.
+            
+            Start our conversation by introducing yourself as their personal IGCSE tutor for {subject}.
+            """]},
+            # We pre-fill the model's first response to ensure it understands its role.
+            {'role': 'model', 'parts': [f"Hello! I am your personal IGCSE Tutor for {subject}. I'm ready to help you with any questions you have about the syllabus. What topic can I help you understand today?"]}
+        ]
+
+        # Start the chat with this pre-defined history
+        chat_session = ai_model.start_chat(history=chat_history)
+        
+        # Now, send the user's *actual* first question to this pre-initialized session
         response = await chat_session.send_message_async(initial_question)
         context.user_data['chat_session'] = chat_session
-        await update.message.reply_text(f"{response.text}\n\n👆 Chatting with AI. Type /done to end.", reply_markup=ReplyKeyboardRemove())
+        
+        await update.message.reply_text(response.text, reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("👆 You are now chatting with the IGCSE Tutor. Type /done to end the session.")
         return T_TUTORING
     except Exception as e:
-        await update.message.reply_text("Couldn't connect to AI. Session ended.", reply_markup=MAIN_MENU_MARKUP)
+        logger.error(f"AI chat initiation failed: {e}")
+        await update.message.reply_text("Couldn't connect to the AI Tutor. Session ended.", reply_markup=MAIN_MENU_MARKUP)
         return ConversationHandler.END
-
-async def forward_to_ai(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # ... Same as before ...
-    chat_session = context.user_data.get('chat_session')
-    if not chat_session:
-        await update.message.reply_text("Session expired. Please start again.", reply_markup=MAIN_MENU_MARKUP)
-        return ConversationHandler.END
-    try:
-        response = await chat_session.send_message_async(update.message.text)
-        await update.message.reply_text(response.text)
-        return T_TUTORING
-    except Exception as e:
-        await update.message.reply_text("Error with AI. Session ended.", reply_markup=MAIN_MENU_MARKUP)
-        return ConversationHandler.END
-
-async def end_tutor_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # ... Same as before ...
-    context.user_data.pop('chat_session', None)
-    context.user_data.pop('tutor_subject', None)
-    await update.message.reply_text("Tutor session ended.", reply_markup=MAIN_MENU_MARKUP)
-    return ConversationHandler.END
 
 # --- UNIVERSAL INLINE BUTTON HANDLER ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
