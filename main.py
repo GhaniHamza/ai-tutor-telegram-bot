@@ -13,6 +13,8 @@ from telegram.ext import (
 import firebase_admin
 from firebase_admin import credentials, firestore
 import google.generativeai as genai
+import base64
+import json
 
 import os # Make sure to add this import at the top of your file
 
@@ -32,9 +34,26 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 db, ai_model = None, None
 try:
-    cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
-    if not firebase_admin._apps: firebase_admin.initialize_app(cred)
+    try:
+    # Get the Base64 encoded string from the environment
+    base64_creds = os.environ.get("FIREBASE_CREDENTIALS_BASE64")
+    
+    # Decode the Base64 string into a JSON string
+    json_creds_str = base64.b64decode(base64_creds).decode('utf-8')
+    
+    # Convert the JSON string into a Python dictionary
+    firebase_credentials_dict = json.loads(json_creds_str)
+    
+    # Initialize Firebase with the dictionary
+    cred = credentials.Certificate(firebase_credentials_dict)
+    
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(cred)
     db = firestore.client()
+    logger.info("Firebase connected successfully via Base64 credentials!") # New log message
+except Exception as e:
+    # This will now give a more specific error if it fails
+    logger.error(f"FATAL: DB connection failed from Base64 credentials: {e}")
 except Exception as e: logger.error(f"FATAL: DB connection failed: {e}")
 try:
     genai.configure(api_key=GEMINI_API_KEY)
